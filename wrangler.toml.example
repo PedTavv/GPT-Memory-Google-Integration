@@ -1,0 +1,70 @@
+# Example wrangler.toml configuration for the Persistent Memory Cloudflare Worker
+# Rename this file to wrangler.toml and fill in your specific values.
+
+# Name of your worker service (visible in Cloudflare dashboard)
+name = "persistent-memory-api-worker" # Choose a unique name for your worker
+
+# The main entry point for your worker code
+main = "cloudflare.js"
+
+# Compatibility date ensures your worker uses a specific version of the Workers runtime
+# Use a recent date: https://developers.cloudflare.com/workers/platform/compatibility-dates/
+compatibility_date = "2024-04-27" # Replace with a recent date
+
+# --- Bindings ---
+# Bindings connect your worker to Cloudflare resources like KV, R2, D1, etc.
+
+# KV Namespace Binding:
+# You MUST create a KV Namespace in the Cloudflare dashboard (Workers & Pages -> KV)
+# and get its ID. Then, uncomment and configure the binding below.
+# The 'binding' name MUST match the variable used in your worker script (e.g., env.MEMORY_KV).
+kv_namespaces = [
+  { binding = "MEMORY_KV", id = "YOUR_KV_NAMESPACE_ID_HERE" }
+]
+
+# Secrets:
+# Secrets are sensitive environment variables (like API keys) managed securely.
+# You MUST set secrets using the command line: `npx wrangler secret put SECRET_NAME`
+# or via the Cloudflare dashboard (Workers & Pages -> Your Worker -> Settings -> Variables -> Secret Variables).
+# The Worker script expects:
+#   MEMORY_API_KEY  (REQUIRED) Bearer token every request must send as
+#                   "Authorization: Bearer <MEMORY_API_KEY>". Requests are rejected
+#                   with 503 if it is not set. Generate with `openssl rand -hex 32`.
+#                   This single key gates access to ALL user_id values.
+#   OPENAI_API_KEY  (optional) Needed for /retrieve-memory-summary.
+# Example commands:
+#   npx wrangler secret put MEMORY_API_KEY
+#   npx wrangler secret put OPENAI_API_KEY
+# For `wrangler dev`, put them in a local .dev.vars file (git-ignored).
+# (No need to list secrets here in the TOML file, they are injected at runtime)
+
+# Environment Variables (Non-Secret):
+# Use this section for non-sensitive configuration variables.
+# ALLOWED_ORIGIN: the single browser origin allowed via CORS. If unset, no
+# Access-Control-Allow-Origin header is sent and browsers block cross-origin calls.
+# Server-to-server callers such as Custom GPT Actions do not need it.
+# [vars]
+# ALLOWED_ORIGIN = "https://your-frontend-domain.com"
+
+# Optional: Specify build configuration if using a build step (e.g., webpack, esbuild)
+# [build]
+# command = "npm run build"
+# watch_dir = "src"
+
+# Optional: Specify environment-specific configurations
+# [env.production]
+# name = "persistent-memory-api-prod"
+# kv_namespaces = [
+#   { binding = "MEMORY_KV", id = "YOUR_PRODUCTION_KV_ID_HERE" }
+# ]
+# [vars]
+# ENVIRONMENT = "production"
+
+# [env.staging]
+# name = "persistent-memory-api-staging"
+# kv_namespaces = [
+#   { binding = "MEMORY_KV", id = "YOUR_STAGING_KV_ID_HERE" }
+# ]
+# [vars]
+# ENVIRONMENT = "staging"
+

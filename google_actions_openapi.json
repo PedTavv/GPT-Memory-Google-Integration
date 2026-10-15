@@ -1,0 +1,1055 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Google Tasks & Calendar API Integration",
+    "description": "Provides an API interface to manage Google Tasks and Calendar events, handling OAuth authentication.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://your-fastapi-app-url.com",
+      "description": "Replace with your deployed FastAPI application URL (e.g., from Render)"
+    }
+  ],
+  "paths": {
+    "/auth": {
+      "get": {
+        "summary": "Initiate Google OAuth2 Flow",
+        "description": "Redirects the user to Google's consent screen to grant permissions. This is the first step for authentication.",
+        "operationId": "redirectToGoogleAuth",
+        "tags": ["Authentication"],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The server API key (same value as X-API-Key). Passed as a query parameter because this URL is opened in a browser."
+          }
+        ],
+        "responses": {
+          "302": { "description": "Redirect to Google OAuth page" },
+          "401": { "description": "Invalid or missing API key" },
+          "500": { "description": "Internal Server Error - Failed to initiate flow" }
+        }
+      }
+    },
+    "/callback": {
+      "get": {
+        "summary": "Handle Google OAuth2 Callback",
+        "description": "Handles the redirect from Google after user consent. Exchanges the code for tokens and stores them. Should not be called directly by clients usually.",
+        "operationId": "handleGoogleCallback",
+        "tags": ["Authentication"],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Authorization code from Google."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "State parameter for CSRF protection."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authentication successful, tokens saved.",
+             "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "user_id": { "type": "string" },
+                    "scopes_granted": { "type": "array", "items": {"type": "string"} }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing code, invalid state, or Google error" },
+          "500": { "description": "Internal Server Error - Failed to process callback" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Checks API health and basic connectivity to Google services (if authenticated). Does not require API key.",
+        "operationId": "getHealthCheck",
+        "tags": ["System"],
+        "responses": {
+          "200": { "description": "API is healthy" },
+          "503": { "description": "API is unhealthy or cannot connect to Google" }
+        }
+      }
+    },
+    "/debug-tokens": {
+      "get": {
+        "summary": "Debug Stored Tokens (Masked)",
+        "description": "Returns masked token data for the specified user (defaults to 'default_user'). Requires API Key.",
+        "operationId": "getDebugTokens",
+        "tags": ["System", "Debugging"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+           {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "default_user" },
+            "description": "Identifier for the user whose tokens to debug."
+           }
+        ],
+        "responses": {
+          "200": { "description": "Masked token information" },
+          "401": { "description": "Unauthorized - Invalid or missing API Key" },
+          "404": { "description": "Not Found - No tokens found for the user" }
+        }
+      }
+    },
+    "/tasklists": {
+      "get": {
+        "summary": "List Task Lists",
+        "description": "Returns all available Google Task lists for the authenticated user. Requires API Key.",
+        "operationId": "getTaskLists",
+        "tags": ["Task Lists"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [ { "$ref": "#/components/parameters/UserIdQueryParam" } ],
+        "responses": {
+          "200": {
+            "description": "A list of task lists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tasklists": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/TaskListInfo" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      },
+      "post": {
+        "summary": "Create Task List",
+        "description": "Creates a new Google Task list. Requires API Key.",
+        "operationId": "createTaskList",
+        "tags": ["Task Lists"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [ { "$ref": "#/components/parameters/UserIdQueryParam" } ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskListInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task list created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "id": { "type": "string" },
+                    "title": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    },
+    "/tasks/{list_name}": {
+      "get": {
+        "summary": "List Tasks (Hierarchical)",
+        "description": "Lists tasks from a specific Google Task list, organizing them hierarchically. Requires API Key.",
+        "operationId": "listTasksHierarchical",
+        "tags": ["Tasks"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/ListNamePathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" },
+          {
+            "name": "include_completed",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false },
+            "description": "Whether to include completed tasks in the result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hierarchical list of tasks.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HierarchicalTaskListResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Task list not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    },
+    "/tasks/add": {
+      "post": {
+        "summary": "Add Task",
+        "description": "Adds a new task (and optionally subtasks) to a specified Google Task list. Requires API Key.",
+        "operationId": "addTask",
+        "tags": ["Tasks"],
+        "security": [ { "APIKeyHeader": [] } ],
+         "parameters": [ { "$ref": "#/components/parameters/UserIdQueryParam" } ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task added successfully.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskAddResponse" }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Invalid input data (e.g., bad date format)" },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Task list or parent task not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    },
+    "/tasks/{list_name}/{task_id}": {
+      "patch": {
+        "summary": "Update Task",
+        "description": "Updates properties of an existing task (title, notes, due, status). Requires API Key.",
+        "operationId": "updateTask",
+        "tags": ["Tasks"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/ListNamePathParam" },
+          { "$ref": "#/components/parameters/TaskIdPathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskUpdateResponse" }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Invalid input data or no updates provided" },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Task list or task not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      },
+      "delete": {
+        "summary": "Delete Task",
+        "description": "Deletes a specific task from a list. Requires API Key.",
+        "operationId": "deleteTask",
+        "tags": ["Tasks"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/ListNamePathParam" },
+          { "$ref": "#/components/parameters/TaskIdPathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task deleted successfully.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleMessageResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Task list or task not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    },
+     "/tasks/{list_name}/{task_id}/toggle": {
+       "post": {
+        "summary": "Toggle Task Completion",
+        "description": "Toggles the completion status of a task between 'needsAction' and 'completed'. Requires API Key.",
+        "operationId": "toggleTaskCompletion",
+        "tags": ["Tasks"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/ListNamePathParam" },
+          { "$ref": "#/components/parameters/TaskIdPathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" }
+        ],
+        "responses": {
+           "200": {
+            "description": "Task status toggled successfully.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskUpdateResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Task list or task not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+       }
+     },
+     "/tasks/{list_name}/batch-delete": {
+       "delete": {
+         "summary": "Batch Delete Tasks",
+         "description": "Deletes multiple tasks from a list in a single batch operation. Requires API Key.",
+         "operationId": "batchDeleteTasks",
+         "tags": ["Tasks"],
+         "security": [ { "APIKeyHeader": [] } ],
+         "parameters": [
+           { "$ref": "#/components/parameters/ListNamePathParam" },
+           { "$ref": "#/components/parameters/UserIdQueryParam" }
+         ],
+         "requestBody": {
+           "required": true,
+           "content": {
+             "application/json": {
+               "schema": { "$ref": "#/components/schemas/BatchDeleteRequest" }
+             }
+           }
+         },
+         "responses": {
+           "200": { "description": "Batch delete successful (all items)" },
+           "207": { "description": "Multi-Status - Batch delete partially successful (check errors)" },
+           "400": { "description": "Bad Request - No task IDs provided" },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "404": { "description": "Not Found - Task list not found" },
+           "500": { "description": "Internal Server Error or Google API Error during batch operation" }
+         }
+       }
+     },
+     "/tasks/{list_name}/reorder": {
+       "post": {
+         "summary": "Reorder Task",
+         "description": "Moves a task within or between parent tasks in a list. Requires API Key.",
+         "operationId": "reorderTask",
+         "tags": ["Tasks"],
+         "security": [ { "APIKeyHeader": [] } ],
+         "parameters": [
+           { "$ref": "#/components/parameters/ListNamePathParam" },
+           { "$ref": "#/components/parameters/UserIdQueryParam" }
+         ],
+         "requestBody": {
+           "required": true,
+           "content": {
+             "application/json": {
+               "schema": { "$ref": "#/components/schemas/ReorderRequest" }
+             }
+           }
+         },
+         "responses": {
+            "200": {
+              "description": "Task reordered successfully.",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TaskUpdateResponse" }
+                }
+              }
+            },
+           "400": { "description": "Bad Request - Invalid request parameters" },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "404": { "description": "Not Found - Task list, task, parent, or previous sibling not found" },
+           "500": { "description": "Internal Server Error or Google API Error" }
+         }
+       }
+     },
+     "/tasks/search/{query}": {
+       "get": {
+         "summary": "Search Tasks Across All Lists",
+         "description": "Searches for tasks containing the query string in their title across all accessible task lists. Requires API Key.",
+         "operationId": "searchTasks",
+         "tags": ["Tasks"],
+         "security": [ { "APIKeyHeader": [] } ],
+         "parameters": [
+           {
+            "name": "query",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 2 },
+            "description": "Search query (at least 2 characters)."
+           },
+           { "$ref": "#/components/parameters/UserIdQueryParam" },
+           {
+            "name": "include_completed",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false },
+            "description": "Whether to include completed tasks in the search results."
+           }
+         ],
+         "responses": {
+           "200": {
+             "description": "Search results.",
+             "content": {
+               "application/json": {
+                 "schema": { "$ref": "#/components/schemas/TaskSearchResponse" }
+               }
+             }
+           },
+           "400": { "description": "Bad Request - Query too short" },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "500": { "description": "Internal Server Error or Google API Error" }
+         }
+       }
+     },
+    "/calendar/events": {
+       "get": {
+         "summary": "List Calendar Events",
+         "description": "Lists events from the primary Google Calendar within a specified time range. Requires API Key.",
+         "operationId": "listCalendarEvents",
+         "tags": ["Calendar"],
+         "security": [ { "APIKeyHeader": [] } ],
+         "parameters": [
+           { "$ref": "#/components/parameters/UserIdQueryParam" },
+           {
+             "name": "max_results", "in": "query", "required": false,
+             "schema": { "type": "integer", "default": 20, "minimum": 1, "maximum": 2500 }
+           },
+           {
+             "name": "time_min", "in": "query", "required": false,
+             "schema": { "type": "string", "format": "date-time" },
+             "description": "Start time (RFC3339/ISO8601). Defaults to now."
+           },
+           {
+             "name": "time_max", "in": "query", "required": false,
+             "schema": { "type": "string", "format": "date-time" },
+             "description": "End time (RFC3339/ISO8601). Optional."
+           },
+           {
+             "name": "query", "in": "query", "required": false,
+             "schema": { "type": "string" }, "description": "Text search query."
+           },
+           {
+             "name": "single_events", "in": "query", "required": false,
+             "schema": { "type": "boolean", "default": true },
+             "description": "Expand recurring events?"
+           },
+           {
+             "name": "order_by", "in": "query", "required": false,
+             "schema": { "type": "string", "enum": ["startTime", "updated"], "default": "startTime" }
+           }
+         ],
+         "responses": {
+           "200": {
+             "description": "List of calendar events.",
+             "content": {
+               "application/json": {
+                 "schema": { "$ref": "#/components/schemas/EventListResponse" }
+               }
+             }
+           },
+           "400": { "description": "Bad Request - Invalid parameters (e.g., bad date format)" },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "500": { "description": "Internal Server Error or Google API Error" }
+         }
+       },
+       "post": {
+         "summary": "Add Calendar Event",
+         "description": "Adds a new event to the primary Google Calendar. Handles attendees, recurrence, and optional Meet link. Requires API Key.",
+         "operationId": "addCalendarEvent",
+         "tags": ["Calendar"],
+         "security": [ { "APIKeyHeader": [] } ],
+         "parameters": [ { "$ref": "#/components/parameters/UserIdQueryParam" } ],
+         "requestBody": {
+           "required": true,
+           "content": {
+             "application/json": {
+               "schema": { "$ref": "#/components/schemas/EventInput" }
+             }
+           }
+         },
+         "responses": {
+           "201": {
+             "description": "Event created successfully.",
+             "content": {
+               "application/json": {
+                 "schema": { "$ref": "#/components/schemas/EventAddResponse" }
+               }
+             }
+           },
+           "400": { "description": "Bad Request - Invalid input data (e.g., end time before start)" },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "500": { "description": "Internal Server Error or Google API Error" }
+         }
+       }
+    },
+    "/calendar/events/today": {
+      "get": {
+        "summary": "List Today's Calendar Events",
+        "description": "Gets all calendar events for today (midnight to midnight) in the server's configured default timezone. Requires API Key.",
+        "operationId": "listTodayCalendarEvents",
+        "tags": ["Calendar"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [ { "$ref": "#/components/parameters/UserIdQueryParam" } ],
+        "responses": {
+           "200": {
+             "description": "List of today's calendar events.",
+             "content": {
+               "application/json": {
+                 "schema": { "$ref": "#/components/schemas/EventListResponse" }
+               }
+             }
+           },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    },
+    "/calendar/events/week": {
+      "get": {
+        "summary": "List Next 7 Days' Calendar Events",
+        "description": "Gets all calendar events starting from today (midnight) for the next 7 days. Requires API Key.",
+        "operationId": "listWeekCalendarEvents",
+        "tags": ["Calendar"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [ { "$ref": "#/components/parameters/UserIdQueryParam" } ],
+         "responses": {
+           "200": {
+             "description": "List of next week's calendar events.",
+             "content": {
+               "application/json": {
+                 "schema": { "$ref": "#/components/schemas/EventListResponse" }
+               }
+             }
+           },
+           "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+           "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    },
+    "/calendar/events/{event_id}": {
+      "get": {
+        "summary": "Get Specific Calendar Event",
+        "description": "Retrieves detailed information about a specific event. Requires API Key.",
+        "operationId": "getCalendarEvent",
+        "tags": ["Calendar"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/EventIdPathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event details.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EventGetResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Event not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      },
+      "patch": {
+        "summary": "Update Calendar Event",
+        "description": "Updates an existing event on the primary calendar using PATCH. Requires API Key.",
+        "operationId": "updateCalendarEvent",
+        "tags": ["Calendar"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/EventIdPathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EventUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EventUpdateResponse" }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Invalid input data or no updates provided" },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Event not found" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      },
+      "delete": {
+        "summary": "Delete Calendar Event",
+        "description": "Deletes an event from the primary calendar. Requires API Key.",
+        "operationId": "deleteCalendarEvent",
+        "tags": ["Calendar"],
+        "security": [ { "APIKeyHeader": [] } ],
+        "parameters": [
+          { "$ref": "#/components/parameters/EventIdPathParam" },
+          { "$ref": "#/components/parameters/UserIdQueryParam" },
+          {
+            "name": "send_notifications", "in": "query", "required": false,
+            "schema": { "type": "boolean", "default": false },
+            "description": "Whether to send notifications to attendees about the cancellation."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event deleted successfully.",
+             "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimpleMessageResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Invalid API Key or Google Auth Required" },
+          "404": { "description": "Not Found - Event not found" },
+          "410": { "description": "Gone - Event instance is gone (e.g., deleted recurring instance)" },
+          "500": { "description": "Internal Server Error or Google API Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SimpleMessageResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        }
+      },
+      "TaskListInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" }
+        }
+      },
+      "TaskListInput": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1 }
+        },
+        "required": ["title"]
+      },
+      "Task": {
+        "type": "object",
+        "description": "Represents a Google Task item.",
+        "properties": {
+          "kind": { "type": "string", "example": "tasks#task" },
+          "id": { "type": "string" },
+          "etag": { "type": "string" },
+          "title": { "type": "string" },
+          "updated": { "type": "string", "format": "date-time" },
+          "selfLink": { "type": "string", "format": "uri" },
+          "parent": { "type": "string", "description": "ID of the parent task, if this is a subtask." },
+          "position": { "type": "string" },
+          "notes": { "type": "string" },
+          "status": { "type": "string", "enum": ["needsAction", "completed"] },
+          "due": { "type": "string", "format": "date-time", "description": "Due date (RFC3339 format)." },
+          "completed": { "type": "string", "format": "date-time", "description": "Completion date (RFC3339 format)." },
+          "deleted": { "type": "boolean" },
+          "hidden": { "type": "boolean" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" },
+                "description": { "type": "string" },
+                "link": { "type": "string", "format": "uri" }
+              }
+            }
+          }
+          ,"subtasks": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Task" }
+          }
+        }
+      },
+      "HierarchicalTaskListResponse": {
+         "type": "object",
+         "properties": {
+            "list_name": { "type": "string" },
+            "list_id": { "type": "string" },
+            "tasks": {
+              "type": "array",
+              "description": "Top-level tasks with nested subtasks.",
+              "items": { "$ref": "#/components/schemas/Task" }
+            },
+            "total_items_retrieved": { "type": "integer" }
+         }
+      },
+      "TaskInput": {
+        "type": "object",
+        "properties": {
+          "list_name": { "type": "string", "description": "Name of the target task list." },
+          "title": { "type": "string", "minLength": 1, "description": "Title of the task." },
+          "notes": { "type": "string", "description": "Optional notes." },
+          "due": { "type": "string", "format": "date-time", "description": "Optional due date (ISO 8601 format, e.g., YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)." },
+          "parent_task_id": { "type": "string", "description": "Optional ID of the parent task for creating a subtask." },
+          "subtasks": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional list of titles for subtasks to create under this new task."
+          }
+        },
+        "required": ["list_name", "title"]
+      },
+      "TaskAddResponse": {
+         "type": "object",
+         "properties": {
+            "message": { "type": "string" },
+            "list_name": { "type": "string" },
+            "task_id": { "type": "string" },
+            "task_details": { "$ref": "#/components/schemas/Task" },
+            "subtasks_added": {
+               "type": "array",
+               "items": {
+                  "type": "object",
+                  "properties": {
+                     "title": { "type": "string" },
+                     "id": { "type": "string" }
+                  }
+               }
+            }
+         }
+      },
+      "TaskUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "description": "New title." },
+          "notes": { "type": "string", "description": "New notes. Set to empty string to clear." },
+          "due": { "type": "string", "format": "date-time", "description": "New due date (ISO 8601). Set to empty string or null to clear." },
+          "status": { "type": "string", "enum": ["needsAction", "completed"], "description": "New status." }
+        },
+        "minProperties": 1
+      },
+      "TaskUpdateResponse": {
+         "type": "object",
+         "properties": {
+            "message": { "type": "string" },
+            "task": { "$ref": "#/components/schemas/Task" }
+         }
+      },
+      "BatchDeleteRequest": {
+         "type": "object",
+         "properties": {
+            "task_ids": {
+               "type": "array",
+               "items": { "type": "string" },
+               "minItems": 1,
+               "description": "List of task IDs to delete."
+            }
+         },
+         "required": ["task_ids"]
+      },
+      "ReorderRequest": {
+         "type": "object",
+         "properties": {
+            "task_id": { "type": "string", "description": "The ID of the task to move." },
+            "previous_sibling_id": { "type": "string", "description": "ID of the task that should precede the moved task. Omit to move to top of current level." },
+            "parent_id": { "type": "string", "description": "ID of the new parent task. Omit or null to move to the top level." }
+         },
+         "required": ["task_id"]
+      },
+      "TaskSearchResultItem": {
+         "type": "object",
+         "properties": {
+            "list_name": { "type": "string" },
+            "list_id": { "type": "string" },
+            "task_id": { "type": "string" },
+            "title": { "type": "string" },
+            "status": { "type": "string", "enum": ["needsAction", "completed"] },
+            "due": { "type": "string", "format": "date-time" },
+            "notes_snippet": { "type": "string" }
+         }
+      },
+      "TaskSearchResponse": {
+         "type": "object",
+         "properties": {
+            "query": { "type": "string" },
+            "results": {
+               "type": "array",
+               "items": { "$ref": "#/components/schemas/TaskSearchResultItem" }
+            },
+            "count": { "type": "integer" }
+         }
+      },
+      "EventDateTime": {
+        "type": "object",
+        "properties": {
+          "dateTime": { "type": "string", "format": "date-time", "description": "ISO 8601 datetime string." },
+          "timeZone": { "type": "string", "description": "Timezone ID (e.g., 'America/New_York'). Defaults to server's setting." }
+        },
+        "required": ["dateTime"]
+      },
+      "EventInput": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string", "minLength": 1, "description": "Event title." },
+          "description": { "type": "string", "description": "Optional event description." },
+          "start": { "$ref": "#/components/schemas/EventDateTime" },
+          "end": { "$ref": "#/components/schemas/EventDateTime" },
+          "location": { "type": "string", "description": "Optional location." },
+          "attendees": {
+            "type": "array",
+            "items": { "type": "string", "format": "email" },
+            "description": "Optional list of attendee email addresses."
+          },
+          "recurrence": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional list of recurrence rules (RRULE, EXRULE, etc.)."
+          },
+          "create_meet_link": {
+             "type": "boolean",
+             "default": false,
+             "description": "Set true to automatically create a Google Meet link."
+           }
+        },
+        "required": ["summary", "start", "end"]
+      },
+      "Event": {
+         "type": "object",
+         "description": "Represents a Google Calendar Event Resource. See Google Calendar API docs for full details.",
+         "properties": {
+            "kind": { "type": "string", "example": "calendar#event" },
+            "id": { "type": "string" },
+            "etag": { "type": "string" },
+            "status": { "type": "string", "enum": ["confirmed", "tentative", "cancelled"] },
+            "htmlLink": { "type": "string", "format": "uri" },
+            "created": { "type": "string", "format": "date-time" },
+            "updated": { "type": "string", "format": "date-time" },
+            "summary": { "type": "string" },
+            "description": { "type": "string" },
+            "location": { "type": "string" },
+            "creator": {
+              "type": "object",
+              "properties": { "email": {"type": "string"}, "displayName": {"type": "string"}, "self": {"type": "boolean"} }
+            },
+            "organizer": {
+              "type": "object",
+              "properties": { "email": {"type": "string"}, "displayName": {"type": "string"}, "self": {"type": "boolean"} }
+            },
+            "start": { "$ref": "#/components/schemas/EventDateTime" },
+            "end": { "$ref": "#/components/schemas/EventDateTime" },
+            "endTimeUnspecified": { "type": "boolean" },
+            "recurrence": { "type": "array", "items": { "type": "string" } },
+            "recurringEventId": { "type": "string" },
+            "originalStartTime": { "$ref": "#/components/schemas/EventDateTime" },
+            "transparency": { "type": "string", "enum": ["opaque", "transparent"] },
+            "visibility": { "type": "string", "enum": ["default", "public", "private", "confidential"] },
+            "iCalUID": { "type": "string" },
+            "sequence": { "type": "integer" },
+            "attendees": {
+               "type": "array",
+               "items": {
+                  "type": "object",
+                  "properties": {
+                     "id": {"type": "string"},
+                     "email": {"type": "string"},
+                     "displayName": {"type": "string"},
+                     "organizer": {"type": "boolean"},
+                     "self": {"type": "boolean"},
+                     "resource": {"type": "boolean"},
+                     "optional": {"type": "boolean"},
+                     "responseStatus": {"type": "string", "enum": ["needsAction", "declined", "tentative", "accepted"]},
+                     "comment": {"type": "string"},
+                     "additionalGuests": {"type": "integer"}
+                  }
+               }
+            },
+            "attendeesOmitted": { "type": "boolean" },
+            "conferenceData": {
+               "type": "object",
+               "properties": {
+                  "createRequest": {
+                     "type": "object",
+                     "properties": {
+                        "requestId": {"type": "string"},
+                        "conferenceSolutionKey": {"type": "object", "properties": {"type": {"type": "string"}}},
+                        "status": {"type": "object", "properties": {"statusCode": {"type": "string"}}}
+                     }
+                  },
+                  "entryPoints": {
+                     "type": "array",
+                     "items": {
+                        "type": "object",
+                        "properties": {
+                           "entryPointType": {"type": "string"},
+                           "uri": {"type": "string"},
+                           "label": {"type": "string"},
+                           "pin": {"type": "string"},
+                           "accessCode": {"type": "string"},
+                           "meetingCode": {"type": "string"},
+                           "passcode": {"type": "string"},
+                           "password": {"type": "string"}
+                        }
+                     }
+                  },
+                  "conferenceSolution": {
+                     "type": "object",
+                     "properties": {
+                        "key": {"type": "object", "properties": {"type": {"type": "string"}}},
+                        "name": {"type": "string"},
+                        "iconUri": {"type": "string"}
+                     }
+                  },
+                  "conferenceId": {"type": "string"},
+                  "signature": {"type": "string"},
+                  "notes": {"type": "string"}
+               }
+            },
+            "reminders": {
+               "type": "object",
+               "properties": {
+                  "useDefault": {"type": "boolean"},
+                  "overrides": {
+                     "type": "array",
+                     "items": {
+                        "type": "object",
+                        "properties": {
+                           "method": {"type": "string", "enum": ["email", "popup"]},
+                           "minutes": {"type": "integer"}
+                        }
+                     }
+                  }
+               }
+            },
+            "source": {
+               "type": "object",
+               "properties": {
+                  "url": {"type": "string"},
+                  "title": {"type": "string"}
+               }
+            }
+         }
+      },
+      "EventListResponse": {
+         "type": "object",
+         "properties": {
+            "events": {
+               "type": "array",
+               "items": { "$ref": "#/components/schemas/Event" }
+            },
+            "count": { "type": "integer" },
+            "query_parameters": { "type": "object", "description": "The parameters used for the list request." }
+         }
+      },
+      "EventAddResponse": {
+         "type": "object",
+         "properties": {
+            "message": { "type": "string" },
+            "event_id": { "type": "string" },
+            "event_link": { "type": "string", "format": "uri" },
+            "start_time": { "type": "string", "format": "date-time" },
+            "end_time": { "type": "string", "format": "date-time" },
+            "timezone": { "type": "string" },
+            "conference_link": { "type": "string", "format": "uri", "nullable": true },
+            "event_details": { "$ref": "#/components/schemas/Event" }
+         }
+      },
+      "EventGetResponse": {
+         "type": "object",
+         "properties": {
+            "event": { "$ref": "#/components/schemas/Event" }
+         }
+      },
+      "EventUpdate": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string", "minLength": 1, "description": "New summary." },
+          "description": { "type": "string", "description": "New description. Set to empty string to clear." },
+          "start": { "$ref": "#/components/schemas/EventDateTime" },
+          "end": { "$ref": "#/components/schemas/EventDateTime" },
+          "location": { "type": "string", "description": "New location. Set to empty string or null to clear." }
+        },
+        "minProperties": 1
+      },
+      "EventUpdateResponse": {
+         "type": "object",
+         "properties": {
+            "message": { "type": "string" },
+            "event": { "$ref": "#/components/schemas/Event" }
+         }
+      }
+    },
+    "parameters": {
+       "UserIdQueryParam": {
+         "name": "user_id",
+         "in": "query",
+         "required": false,
+         "schema": { "type": "string", "default": "default_user" },
+         "description": "Identifier for the user context (if multi-user)."
+       },
+       "ListNamePathParam": {
+         "name": "list_name",
+         "in": "path",
+         "required": true,
+         "schema": { "type": "string" },
+         "description": "The name of the target task list."
+       },
+       "TaskIdPathParam": {
+         "name": "task_id",
+         "in": "path",
+         "required": true,
+         "schema": { "type": "string" },
+         "description": "The ID of the target task."
+       },
+       "EventIdPathParam": {
+         "name": "event_id",
+         "in": "path",
+         "required": true,
+         "schema": { "type": "string" },
+         "description": "The ID of the target calendar event."
+       }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API Key required for accessing most endpoints."
+      }
+    }
+  }
+}

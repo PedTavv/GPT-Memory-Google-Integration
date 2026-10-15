@@ -1,0 +1,28 @@
+# Python dependencies for the FastAPI Google Integration App
+# Versions are pinned exactly; bump deliberately after testing.
+
+fastapi==0.143.1              # The core FastAPI framework
+uvicorn[standard]==0.54.0     # ASGI server to run FastAPI (standard includes websockets, http-tools)
+
+# Google API Libraries
+google-api-python-client==2.201.0
+google-auth-oauthlib==1.5.0
+google-auth-httplib2==0.4.4
+
+# Environment Variable Loading
+python-dotenv==1.2.4
+
+# Pydantic (often needed explicitly or as a dependency)
+# FastAPI relies heavily on Pydantic
+pydantic==2.14.1
+
+# Session Middleware (FastAPI uses Starlette's)
+# Usually installed with FastAPI/Uvicorn standard, but good to be aware of Starlette
+# starlette>=0.25.0
+
+# Required by Starlette's SessionMiddleware (signed session cookies)
+itsdangerous==2.2.0
+
+# Optional, but often useful with FastAPI
+# python-multipart>=0.0.5    # For handling form data, file uploads
+

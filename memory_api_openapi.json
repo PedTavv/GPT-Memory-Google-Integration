@@ -1,0 +1,544 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Persistent Memory API (Cloudflare Worker)",
+    "description": "Stores, retrieves, updates, and deletes persistent memories via Cloudflare KV. Includes AI summarization and placeholders for advanced features.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://your-worker-subdomain.your-account.workers.dev",
+      "description": "Replace with your deployed Cloudflare Worker URL"
+    }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/store-memory": {
+      "post": {
+        "summary": "Store a memory item",
+        "operationId": "storeMemory",
+        "tags": ["Memory"],
+        "requestBody": {
+          "description": "Memory item details",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user_id": {
+                    "type": "string",
+                    "description": "Identifier for the user."
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "Category to store the memory under."
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "The content of the memory."
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "description": "Priority level (e.g., 1-5).",
+                    "default": 2
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional list of tags.",
+                    "default": []
+                  }
+                },
+                "required": ["user_id", "category", "message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Memory stored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "memory_id": { "type": "string" },
+                    "data": { "$ref": "#/components/schemas/MemoryItem" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing parameters or invalid types" },
+          "500": { "description": "Internal Server Error - Failed to store memory" }
+        }
+      }
+    },
+    "/retrieve-memory": {
+      "get": {
+        "summary": "Retrieve memories by category",
+        "operationId": "retrieveMemoryByCategory",
+        "tags": ["Memory"],
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIdQuery" },
+          { "$ref": "#/components/parameters/CategoryQueryRequired" },
+          { "$ref": "#/components/parameters/LimitQuery" },
+          { "$ref": "#/components/parameters/OffsetQuery" },
+          { "$ref": "#/components/parameters/TagQuery" },
+          { "$ref": "#/components/parameters/SortByQuery" },
+          { "$ref": "#/components/parameters/SortOrderQuery" }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of memories in the specified category",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryListResponse" }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing parameters or invalid sort options" },
+          "500": { "description": "Internal Server Error - Failed to retrieve memories" }
+        }
+      }
+    },
+    "/retrieve-all-memories": {
+      "get": {
+        "summary": "Retrieve all memories for a user",
+        "operationId": "retrieveAllMemories",
+        "tags": ["Memory"],
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIdQuery" },
+          { "$ref": "#/components/parameters/LimitQueryAll" },
+          { "$ref": "#/components/parameters/OffsetQuery" },
+          { "$ref": "#/components/parameters/TagQuery" },
+          { "$ref": "#/components/parameters/SearchQuery" },
+          { "$ref": "#/components/parameters/SortByQueryAll" },
+          { "$ref": "#/components/parameters/SortOrderQueryDesc" }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of all memories for the user, optionally filtered and sorted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AllMemoryListResponse" }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing parameters or invalid sort options" },
+          "500": { "description": "Internal Server Error - Failed to retrieve memories" }
+        }
+      }
+    },
+    "/update-memory": {
+      "patch": {
+        "summary": "Update a specific memory item",
+        "operationId": "updateMemory",
+        "tags": ["Memory"],
+        "requestBody": {
+          "description": "Fields to update for a specific memory item, identified by memory_id.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user_id": {
+                    "type": "string",
+                    "description": "Identifier for the user."
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "Category containing the memory."
+                  },
+                  "memory_id": {
+                    "type": "string",
+                    "description": "The unique ID of the memory item to update."
+                  },
+                  "new_message": {
+                    "type": "string",
+                    "description": "Optional new content for the memory."
+                  },
+                  "new_priority": {
+                    "type": "integer",
+                    "description": "Optional new priority level."
+                  },
+                  "new_tags": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Optional new list of tags (replaces existing tags)."
+                  }
+                },
+                "required": ["user_id", "category", "memory_id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memory updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": { "$ref": "#/components/schemas/MemoryItem" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing parameters, invalid types, or no update fields provided" },
+          "404": { "description": "Not Found - Category or Memory ID not found" },
+          "500": { "description": "Internal Server Error - Failed to update memory" }
+        }
+      }
+    },
+    "/forget-memory": {
+      "delete": {
+        "summary": "Delete memory data",
+        "description": "Deletes a specific memory item (if memory_id provided), an entire category (if only category provided), or all data for a user (if only user_id provided).",
+        "operationId": "forgetMemory",
+        "tags": ["Memory"],
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIdQuery" },
+          { "$ref": "#/components/parameters/CategoryQueryOptional" },
+          { "$ref": "#/components/parameters/MemoryIdQuery" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing user_id or invalid parameter combination" },
+          "404": { "description": "Not Found - Category or Memory ID not found for deletion" },
+          "500": { "description": "Internal Server Error - Failed to delete memory" }
+        }
+      }
+    },
+    "/retrieve-memory-summary": {
+      "get": {
+        "summary": "Get AI summary of memories",
+        "operationId": "retrieveMemorySummary",
+        "tags": ["AI Features"],
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIdQuery" },
+          { "$ref": "#/components/parameters/CategoryQueryOptional" }
+        ],
+        "responses": {
+          "200": {
+            "description": "AI-generated summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad Request - Missing user_id" },
+          "404": { "description": "Not Found - Category not found" },
+          "500": { "description": "Internal Server Error - Failed to generate summary" },
+          "501": { "description": "Not Implemented - Summarization feature not configured" },
+          "502": { "description": "Bad Gateway - OpenAI API call failed"}
+        }
+      }
+    },
+    "/retrieve-memory-semantic": {
+      "get": {
+        "summary": "Semantic search for memories (Placeholder)",
+        "operationId": "retrieveMemorySemantic",
+        "tags": ["AI Features", "Placeholders"],
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIdQuery" },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The text query for semantic search."
+          }
+        ],
+        "responses": {
+          "501": { "description": "Not Implemented" }
+        }
+      }
+    },
+    "/auto-link-memory": {
+      "post": {
+        "summary": "Auto-link memory to external tasks (Placeholder)",
+        "operationId": "autoLinkMemory",
+        "tags": ["AI Features", "Placeholders"],
+        "requestBody": {
+          "description": "Details for auto-linking",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user_id": { "type": "string" },
+                  "message": { "type": "string" }
+                },
+                "required": ["user_id", "message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "501": { "description": "Not Implemented" }
+        }
+      }
+    },
+    "/trigger-memory-action": {
+      "post": {
+        "summary": "Trigger an action based on a memory (Placeholder)",
+        "operationId": "triggerMemoryAction",
+        "tags": ["AI Features", "Placeholders"],
+        "requestBody": {
+          "description": "Details for triggering an action",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user_id": { "type": "string" },
+                  "memory_id": { "type": "string" },
+                  "action": { "type": "string" }
+                },
+                "required": ["user_id", "memory_id", "action"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "501": { "description": "Not Implemented" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Send 'Authorization: Bearer <MEMORY_API_KEY>'. The key is a Worker secret and grants access to all user_id values."
+      }
+    },
+    "schemas": {
+      "MemoryMetadata": {
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the memory item was created."
+          },
+          "last_modified": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the memory item was last updated."
+          }
+        }
+      },
+      "MemoryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the memory item."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp associated with the memory content (usually creation time)."
+          },
+          "message": {
+            "type": "string",
+            "description": "The content of the memory."
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Priority level."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of tags associated with the memory."
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MemoryMetadata"
+          }
+        }
+      },
+      "MemoryItemWithCategory": {
+        "allOf": [
+           { "$ref": "#/components/schemas/MemoryItem" },
+           {
+              "type": "object",
+              "properties": {
+                 "category": {
+                    "type": "string",
+                    "description": "The category this memory belongs to."
+                 }
+              }
+           }
+        ]
+      },
+      "MemoryListResponse": {
+        "type": "object",
+        "properties": {
+          "history": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MemoryItem" }
+          },
+          "total": { "type": "integer", "description": "Total number of items matching the filter in this category." },
+          "limit": { "type": "integer", "description": "The limit used for pagination." },
+          "offset": { "type": "integer", "description": "The offset used for pagination." },
+          "remaining": { "type": "integer", "description": "Estimated number of items remaining after this page." }
+        }
+      },
+       "AllMemoryListResponse": {
+        "type": "object",
+        "properties": {
+          "memories": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MemoryItemWithCategory" }
+          },
+          "total": { "type": "integer", "description": "Total number of items matching the filter across all categories." },
+          "limit": { "type": "integer", "description": "The limit used for pagination (0 if no limit)." },
+          "offset": { "type": "integer", "description": "The offset used for pagination." },
+          "remaining": { "type": "integer", "description": "Estimated number of items remaining after this page (0 if no limit)." }
+        }
+      }
+    },
+    "parameters": {
+      "UserIdQuery": {
+        "name": "user_id",
+        "in": "query",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Identifier for the user."
+      },
+      "CategoryQueryRequired": {
+        "name": "category",
+        "in": "query",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "The category to query."
+      },
+      "CategoryQueryOptional": {
+        "name": "category",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Optional category to filter by."
+      },
+      "MemoryIdQuery": {
+        "name": "memory_id",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "format": "uuid" },
+        "description": "The unique ID of a specific memory item."
+      },
+      "LimitQuery": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 100, "minimum": 1 },
+        "description": "Maximum number of items to return."
+      },
+      "LimitQueryAll": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 0, "minimum": 0 },
+        "description": "Maximum number of items to return (0 for no limit)."
+      },
+      "OffsetQuery": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 0, "minimum": 0 },
+        "description": "Number of items to skip for pagination."
+      },
+      "TagQuery": {
+        "name": "tag",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Filter memories by a specific tag."
+      },
+      "SearchQuery": {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Search term to filter memories by message content (case-insensitive)."
+      },
+      "SortByQuery": {
+        "name": "sort_by",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["priority", "timestamp", "message", "created_at"],
+          "default": "priority"
+        },
+        "description": "Field to sort memories by."
+      },
+      "SortByQueryAll": {
+        "name": "sort_by",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["priority", "timestamp", "message", "category", "created_at"],
+          "default": "timestamp"
+        },
+        "description": "Field to sort memories by."
+      },
+      "SortOrderQuery": {
+        "name": "sort_order",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["asc", "desc"],
+          "default": "asc"
+        },
+        "description": "Sort order: ascending or descending."
+      },
+      "SortOrderQueryDesc": {
+        "name": "sort_order",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["asc", "desc"],
+          "default": "desc"
+        },
+        "description": "Sort order: ascending or descending."
+      }
+    }
+  }
+}
